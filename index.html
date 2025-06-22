@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Шумовой Таймер v2</title>
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --primary-color: #e0e0e0;
+            --accent-color: #007bff;
+            --success-color: #28a745;
+            --danger-color: #dc3545;
+            --slider-track-bg: #444;
+            --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--primary-color);
+            font-family: var(--font-family);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 380px;
+            padding: 2rem;
+            box-sizing: border-box;
+            text-align: center;
+        }
+
+        #initial-view {
+            display: flex; /* По умолчанию скрыто через JS */
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        #app-view {
+            display: none; /* По умолчанию скрыто */
+            flex-direction: column;
+            align-items: center;
+            gap: 2rem;
+        }
+
+        .timer-display {
+            font-size: 6rem;
+            font-weight: 300;
+            line-height: 1;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background-color: var(--slider-track-bg);
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background-color: var(--accent-color);
+            border-radius: 5px;
+            transition: width 0.1s linear;
+        }
+
+        .controls-group {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .control {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        label {
+            font-size: 0.9rem;
+            color: #aaa;
+        }
+
+        .time-control {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .time-value {
+            font-size: 2rem;
+            min-width: 90px;
+            font-weight: 500;
+        }
+
+        .control-button, #start-button {
+            background-color: var(--slider-track-bg);
+            color: var(--primary-color);
+            border: none;
+            border-radius: 50%;
+            width: 44px;
+            height: 44px;
+            font-size: 2rem;
+            line-height: 44px;
+            cursor: pointer;
+            user-select: none;
+            transition: background-color 0.2s;
+        }
+
+        #start-button {
+            width: auto;
+            height: auto;
+            border-radius: 12px;
+            padding: 1rem 2rem;
+            font-size: 1.2rem;
+        }
+
+        .control-button:active, #start-button:active {
+            background-color: #555;
+        }
+
+        .slider-container {
+            width: 100%;
+            height: 24px; /* Увеличено для удобства */
+            display: flex;
+            align-items: center;
+        }
+
+        #threshold-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 8px;
+            background: var(--slider-track-bg);
+            border-radius: 5px;
+            outline: none;
+            cursor: pointer;
+
+            /* --- ИЗМЕНЕНИЕ #2: фон для отображения шума --- */
+            background-image: linear-gradient(to right, var(--danger-color), var(--danger-color));
+            background-size: var(--noise-level, 0%) 100%;
+            background-repeat: no-repeat;
+        }
+
+        #threshold-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 24px;
+            height: 24px;
+            background: var(--primary-color);
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        #threshold-slider::-moz-range-thumb {
+            width: 24px;
+            height: 24px;
+            background: var(--primary-color);
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="initial-view">
+        <h2>Шумовой Таймер</h2>
+        <p>Приложение запускает секундомер, когда вы говорите, и останавливает, когда вы молчите. Нажмите "Начать" и разрешите доступ к микрофону.</p>
+        <button id="start-button">Начать</button>
+    </div>
+
+    <div id="app-view">
+        <div class="timer-display" id="timer">0.0</div>
+
+        <div class="progress-bar">
+            <div class="progress-bar-fill" id="progress-fill"></div>
+        </div>
+
+        <div class="controls-group">
+            <div class="control">
+                <label for="time-adjust">Целевое время (секунды)</label>
+                <div class="time-control" id="time-adjust">
+                    <button class="control-button" id="decrease-time">-</button>
+                    <span class="time-value" id="target-time-display">15.0</span>
+                    <button class="control-button" id="increase-time">+</button>
+                </div>
+            </div>
+
+            <div class="control">
+                <label for="threshold-slider">Чувствительность микрофона</label>
+                <div class="slider-container">
+                    <input type="range" min="0" max="100" value="50" id="threshold-slider">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<audio id="notification-sound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" preload="auto"></audio>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // --- DOM Элементы ---
+        const initialView = document.getElementById('initial-view');
+        const appView = document.getElementById('app-view');
+        const startButton = document.getElementById('start-button');
+        const timerDisplay = document.getElementById('timer');
+        const progressFill = document.getElementById('progress-fill');
+        const targetTimeDisplay = document.getElementById('target-time-display');
+        const decreaseTimeBtn = document.getElementById('decrease-time');
+        const increaseTimeBtn = document.getElementById('increase-time');
+        const thresholdSlider = document.getElementById('threshold-slider');
+        const notificationSound = document.getElementById('notification-sound');
+
+        // --- Состояние приложения ---
+        let targetTime = 15.0;
+        let noiseThreshold = 50;
+        let accumulatedTime = 0;
+        let lastFrameTime = Date.now();
+
+        // --- Функции ---
+        function loadSettings() {
+            const savedTime = localStorage.getItem('noiseTimerTargetTime');
+            const savedThreshold = localStorage.getItem('noiseTimerThreshold');
+            targetTime = savedTime ? parseFloat(savedTime) : 15.0;
+            noiseThreshold = savedThreshold ? parseInt(savedThreshold, 10) : 50;
+            updateTargetTimeDisplay();
+            thresholdSlider.value = noiseThreshold;
+        }
+
+        function saveSettings() {
+            localStorage.setItem('noiseTimerTargetTime', targetTime);
+            localStorage.setItem('noiseTimerThreshold', noiseThreshold);
+        }
+
+        function updateTargetTimeDisplay() {
+            targetTimeDisplay.textContent = targetTime.toFixed(1);
+        }
+
+        function updateTimerDisplay() {
+            timerDisplay.textContent = (accumulatedTime / 1000).toFixed(1);
+            const progress = Math.min((accumulatedTime / (targetTime * 1000)) * 100, 100);
+            progressFill.style.width = `${progress}%`;
+        }
+
+        function setupAudioProcessing(stream) {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const analyser = audioContext.createAnalyser();
+            const microphone = audioContext.createMediaStreamSource(stream);
+
+            analyser.fftSize = 512;
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+
+            microphone.connect(analyser);
+
+            function processAudio() {
+                analyser.getByteFrequencyData(dataArray);
+
+                let sum = 0;
+                for(let i = 0; i < bufferLength; i++) {
+                    sum += dataArray[i];
+                }
+                let average = sum / bufferLength;
+                const normalizedVolume = Math.min(average * 1.5, 100);
+
+                // --- ИЗМЕНЕНИЕ #2: Обновляем CSS-переменную на самом ползунке ---
+                thresholdSlider.style.setProperty('--noise-level', `${normalizedVolume}%`);
+
+                const isNoisy = normalizedVolume > noiseThreshold;
+                updateStopwatch(isNoisy);
+
+                requestAnimationFrame(processAudio);
+            }
+            processAudio();
+        }
+
+        function updateStopwatch(isNoisy) {
+            const now = Date.now();
+            const deltaTime = now - lastFrameTime;
+            lastFrameTime = now;
+
+            if (isNoisy) {
+                accumulatedTime += deltaTime;
+            }
+
+            if (accumulatedTime >= targetTime * 1000) {
+                notificationSound.play();
+                accumulatedTime = 0;
+            }
+            updateTimerDisplay();
+        }
+
+        async function startApplication() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                initialView.style.display = 'none';
+                appView.style.display = 'flex';
+                lastFrameTime = Date.now();
+                setupAudioProcessing(stream);
+            } catch (err) {
+                console.error('Ошибка доступа к микрофону:', err);
+                initialView.style.display = 'flex';
+                appView.style.display = 'none';
+                alert('Не удалось получить доступ к микрофону. Пожалуйста, разрешите доступ в настройках вашего браузера.');
+            }
+        }
+
+        // --- ИЗМЕНЕНИЕ #1: Проверка разрешений при запуске ---
+        async function initialize() {
+            loadSettings();
+            updateTimerDisplay();
+
+            // Проверяем, есть ли уже разрешение, перечисляя устройства
+            // Если у аудиоустройства есть 'label', значит разрешение дано
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const hasMicrophonePermission = devices.some(device => device.kind === 'audioinput' && device.label);
+
+                if (hasMicrophonePermission) {
+                    await startApplication();
+                } else {
+                    // Показываем кнопку "Начать", если разрешения еще нет
+                    initialView.style.display = 'flex';
+                    appView.style.display = 'none';
+                }
+            } catch (err) {
+                // Если API не поддерживается, показываем кнопку по умолчанию
+                initialView.style.display = 'flex';
+                appView.style.display = 'none';
+            }
+        }
+
+        // --- Обработчики событий ---
+        startButton.addEventListener('click', startApplication);
+        increaseTimeBtn.addEventListener('click', () => {
+            targetTime = parseFloat((targetTime + 0.1).toFixed(1));
+            updateTargetTimeDisplay();
+            saveSettings();
+        });
+        decreaseTimeBtn.addEventListener('click', () => {
+            if (targetTime > 0.1) {
+                targetTime = parseFloat((targetTime - 0.1).toFixed(1));
+                updateTargetTimeDisplay();
+                saveSettings();
+            }
+        });
+        thresholdSlider.addEventListener('input', (e) => {
+            noiseThreshold = parseInt(e.target.value, 10);
+            saveSettings();
+        });
+
+        // --- Запуск ---
+        initialize();
+    });
+</script>
+</body>
+</html>
