@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Шумовой Таймер v2</title>
+    <title>Шумовой Таймер v3</title>
     <style>
         :root {
             --bg-color: #1a1a1a;
@@ -25,6 +25,17 @@
             min-height: 100vh;
             margin: 0;
             -webkit-tap-highlight-color: transparent;
+            transition: background-color 0.3s;
+        }
+
+        /* --- ИЗМЕНЕНИЕ #3: Анимация вспышки --- */
+        @keyframes screen-flash {
+            0% { background-color: #fff; }
+            100% { background-color: var(--bg-color); }
+        }
+
+        body.flash {
+            animation: screen-flash 0.4s ease-out;
         }
 
         .container {
@@ -36,24 +47,55 @@
         }
 
         #initial-view {
-            display: flex; /* По умолчанию скрыто через JS */
+            display: flex;
             flex-direction: column;
             align-items: center;
             gap: 1rem;
         }
 
         #app-view {
-            display: none; /* По умолчанию скрыто */
+            display: none;
             flex-direction: column;
             align-items: center;
             gap: 2rem;
+        }
+
+        /* --- ИЗМЕНЕНИЕ #2: Обёртка для таймера и кнопки сброса --- */
+        .timer-wrapper {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 1rem;
+            width: 100%;
         }
 
         .timer-display {
             font-size: 6rem;
             font-weight: 300;
             line-height: 1;
+            flex-grow: 1;
+            /* --- ИЗМЕНЕНИЕ #3: Начальный цвет таймера --- */
+            color: var(--success-color);
+            transition: color 0.3s;
         }
+
+        /* --- ИЗМЕНЕНИЕ #2: Стили для кнопки сброса --- */
+        #reset-button {
+            background: transparent;
+            border: none;
+            color: #777;
+            font-size: 2rem;
+            cursor: pointer;
+            padding: 0.5rem;
+            line-height: 1;
+            border-radius: 50%;
+            transition: color 0.2s, background-color 0.2s;
+        }
+        #reset-button:hover {
+            color: var(--primary-color);
+            background-color: var(--slider-track-bg);
+        }
+
 
         .progress-bar {
             width: 100%;
@@ -130,7 +172,7 @@
 
         .slider-container {
             width: 100%;
-            height: 24px; /* Увеличено для удобства */
+            height: 24px;
             display: flex;
             align-items: center;
         }
@@ -144,8 +186,6 @@
             border-radius: 5px;
             outline: none;
             cursor: pointer;
-
-            /* --- ИЗМЕНЕНИЕ #2: фон для отображения шума --- */
             background-image: linear-gradient(to right, var(--danger-color), var(--danger-color));
             background-size: var(--noise-level, 0%) 100%;
             background-repeat: no-repeat;
@@ -182,7 +222,10 @@
     </div>
 
     <div id="app-view">
-        <div class="timer-display" id="timer">0.0</div>
+        <div class="timer-wrapper">
+            <div class="timer-display" id="timer">0.0</div>
+            <button id="reset-button" title="Сбросить таймер">↻</button>
+        </div>
 
         <div class="progress-bar">
             <div class="progress-bar-fill" id="progress-fill"></div>
@@ -208,34 +251,32 @@
     </div>
 </div>
 
-<audio id="notification-sound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" preload="auto"></audio>
-
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         // --- DOM Элементы ---
+        const body = document.body;
         const initialView = document.getElementById('initial-view');
         const appView = document.getElementById('app-view');
         const startButton = document.getElementById('start-button');
         const timerDisplay = document.getElementById('timer');
+        const resetButton = document.getElementById('reset-button');
         const progressFill = document.getElementById('progress-fill');
         const targetTimeDisplay = document.getElementById('target-time-display');
         const decreaseTimeBtn = document.getElementById('decrease-time');
         const increaseTimeBtn = document.getElementById('increase-time');
         const thresholdSlider = document.getElementById('threshold-slider');
-        const notificationSound = document.getElementById('notification-sound');
 
         // --- Состояние приложения ---
         let targetTime = 15.0;
         let noiseThreshold = 50;
         let accumulatedTime = 0;
         let lastFrameTime = Date.now();
+        let hasExceededTarget = false;
 
         // --- Функции ---
         function loadSettings() {
-            const savedTime = localStorage.getItem('noiseTimerTargetTime');
-            const savedThreshold = localStorage.getItem('noiseTimerThreshold');
-            targetTime = savedTime ? parseFloat(savedTime) : 15.0;
-            noiseThreshold = savedThreshold ? parseInt(savedThreshold, 10) : 50;
+            targetTime = parseFloat(localStorage.getItem('noiseTimerTargetTime') || '15.0');
+            noiseThreshold = parseInt(localStorage.getItem('noiseTimerThreshold') || '50', 10);
             updateTargetTimeDisplay();
             thresholdSlider.value = noiseThreshold;
         }
@@ -251,8 +292,17 @@
 
         function updateTimerDisplay() {
             timerDisplay.textContent = (accumulatedTime / 1000).toFixed(1);
+
             const progress = Math.min((accumulatedTime / (targetTime * 1000)) * 100, 100);
             progressFill.style.width = `${progress}%`;
+
+            const isOverTime = accumulatedTime > targetTime * 1000;
+            timerDisplay.style.color = isOverTime ? 'var(--danger-color)' : 'var(--success-color)';
+
+            if (isOverTime && !hasExceededTarget) {
+                body.classList.add('flash');
+                hasExceededTarget = true;
+            }
         }
 
         function setupAudioProcessing(stream) {
@@ -276,7 +326,6 @@
                 let average = sum / bufferLength;
                 const normalizedVolume = Math.min(average * 1.5, 100);
 
-                // --- ИЗМЕНЕНИЕ #2: Обновляем CSS-переменную на самом ползунке ---
                 thresholdSlider.style.setProperty('--noise-level', `${normalizedVolume}%`);
 
                 const isNoisy = normalizedVolume > noiseThreshold;
@@ -296,10 +345,7 @@
                 accumulatedTime += deltaTime;
             }
 
-            if (accumulatedTime >= targetTime * 1000) {
-                notificationSound.play();
-                accumulatedTime = 0;
-            }
+            // --- ИЗМЕНЕНИЕ #1: Таймер больше не сбрасывается автоматически ---
             updateTimerDisplay();
         }
 
@@ -314,44 +360,48 @@
                 console.error('Ошибка доступа к микрофону:', err);
                 initialView.style.display = 'flex';
                 appView.style.display = 'none';
-                alert('Не удалось получить доступ к микрофону. Пожалуйста, разрешите доступ в настройках вашего браузера.');
+                alert('Не удалось получить доступ к микрофону.');
             }
         }
 
-        // --- ИЗМЕНЕНИЕ #1: Проверка разрешений при запуске ---
         async function initialize() {
             loadSettings();
             updateTimerDisplay();
 
-            // Проверяем, есть ли уже разрешение, перечисляя устройства
-            // Если у аудиоустройства есть 'label', значит разрешение дано
             try {
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 const hasMicrophonePermission = devices.some(device => device.kind === 'audioinput' && device.label);
-
                 if (hasMicrophonePermission) {
                     await startApplication();
                 } else {
-                    // Показываем кнопку "Начать", если разрешения еще нет
                     initialView.style.display = 'flex';
                     appView.style.display = 'none';
                 }
             } catch (err) {
-                // Если API не поддерживается, показываем кнопку по умолчанию
                 initialView.style.display = 'flex';
                 appView.style.display = 'none';
             }
         }
 
-        // --- Обработчики событий ---
         startButton.addEventListener('click', startApplication);
+
+        resetButton.addEventListener('click', () => {
+            accumulatedTime = 0;
+            hasExceededTarget = false; // Сбрасываем флаг вспышки
+            updateTimerDisplay(); // Немедленно обновляем отображение
+        });
+
+        body.addEventListener('animationend', () => {
+            body.classList.remove('flash');
+        });
+
         increaseTimeBtn.addEventListener('click', () => {
             targetTime = parseFloat((targetTime + 0.1).toFixed(1));
             updateTargetTimeDisplay();
             saveSettings();
         });
         decreaseTimeBtn.addEventListener('click', () => {
-            if (targetTime > 0.1) {
+            if (targetTime > 0.2) { // Защита от ухода в ноль и отрицательные значения
                 targetTime = parseFloat((targetTime - 0.1).toFixed(1));
                 updateTargetTimeDisplay();
                 saveSettings();
